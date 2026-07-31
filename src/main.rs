@@ -1,3 +1,6 @@
+// Windows 下不弹黑色控制台窗口
+#![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
+
 mod api;
 mod app;
 mod generator;
