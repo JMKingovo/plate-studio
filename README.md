@@ -96,17 +96,6 @@ websocat ws://127.0.0.1:18765/api/v1/events
 }
 ```
 
-## 给其他 AI 的连接说明
-
-可把下面这段发给 AI：
-
-> 本机/局域网运行了 Plate Studio（界面顶部可复制地址，默认端口 18765）。
-> - `POST /api/v1/plates/generate` body `{"random":true}` 生成车牌
-> - `GET /api/v1/plates/latest` 读取最新车牌号与图片
-> - `POST /api/v1/ui/fullscreen` body `{"enabled":true}` 控制全屏
-> - 实时通知：`ws://<地址>/api/v1/events`
-> 返回 JSON 中的 `plate` 字段就是车牌号。
-
 ## Windows 构建
 
 在 Windows（建议 MSVC 工具链）上：
