@@ -1,0 +1,9 @@
+/target/
+/dist/
+/output/*.jpg
+/output/*.png
+/output/*.png
+!/output/.gitkeep
+*.pdb
+*.exe
+.DS_Store

@@ -1,0 +1,24 @@
+[package]
+name = "plate-studio"
+version = "0.1.0"
+edition = "2021"
+description = "中国车牌生成桌面软件，内置本机 HTTP API 供其他 AI 连接"
+license = "MIT"
+
+[dependencies]
+anyhow = "1"
+axum = { version = "0.8", features = ["ws"] }
+base64 = "0.22"
+chrono = { version = "0.4", features = ["serde"] }
+eframe = { version = "0.31", default-features = true, features = ["default_fonts", "glow"] }
+egui = "0.31"
+futures-util = "0.3"
+image = { version = "0.25", default-features = false, features = ["jpeg", "png"] }
+rand = "0.9"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["full"] }
+tower-http = { version = "0.6", features = ["cors"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+uuid = { version = "1", features = ["v4"] }
