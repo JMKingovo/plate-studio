@@ -1,21 +1,24 @@
 //! 车牌图片合成（复用 plate_model / font_model 素材）
-//! 默认按 3 倍分辨率渲染，无模糊，边缘更清晰。
+//! 高清硬贴字 + 可选居中场景图（便于相机识别）。
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use anyhow::{anyhow, Context, Result};
-use image::{imageops, DynamicImage, GrayImage, Rgb, RgbImage, ImageEncoder};
+use image::{imageops, DynamicImage, GrayImage, ImageEncoder, Rgb, RgbImage};
 
-use crate::plate_number::{self, is_letter};
+use crate::plate_number::{self, is_letter, DIGITS, LETTERS};
 
-/// 相对标准 440×140 / 480×140 的放大倍数
+/// 高清：相对标准 440×140 / 480×140 放大倍数
 pub const RENDER_SCALE: u32 = 3;
+
+/// 场景图尺寸（车牌居中铺在暗底上，方便相机/识别器定位）
+pub const SCENE_W: u32 = 1280;
+pub const SCENE_H: u32 = 720;
 
 #[derive(Clone)]
 pub struct PlateGenerator {
     plate_model_dir: PathBuf,
-    /// 原始灰度字体（不做预缩放，粘贴时按目标尺寸高质量缩放）
     fonts: HashMap<String, GrayImage>,
 }
 
@@ -44,9 +47,22 @@ impl PlateGenerator {
                 .ok_or_else(|| anyhow!("无效字体文件名: {}", path.display()))?
                 .to_string();
 
-            let img = image::open(&path)
+            let mut img = image::open(&path)
                 .with_context(|| format!("打开字体 {}", path.display()))?
                 .to_luma8();
+
+            // 与 Python 预缩放一致（再按 bbox 放大到高清）
+            if stem.contains("140") {
+                img = imageops::resize(&img, 45, 90, imageops::FilterType::Triangle);
+            } else if stem.contains("220") {
+                img = imageops::resize(&img, 65, 110, imageops::FilterType::Triangle);
+            } else if let Some(ch) = stem.rsplit('_').next() {
+                let c = ch.chars().next().unwrap_or('\0');
+                if ch.len() == 1 && (DIGITS.contains(&c) || LETTERS.contains(&c)) {
+                    img = imageops::resize(&img, 43, 90, imageops::FilterType::Triangle);
+                }
+            }
+
             fonts.insert(stem, img);
         }
 
@@ -56,7 +72,8 @@ impl PlateGenerator {
         })
     }
 
-    pub fn generate(&self, plate: &str, bg_color: &str) -> Result<RgbImage> {
+    /// 生成高清车牌本体（不含场景底）
+    pub fn generate_plate_only(&self, plate: &str, bg_color: &str) -> Result<RgbImage> {
         plate_number::validate_plate(plate).map_err(|e| anyhow!(e))?;
         let chars: Vec<char> = plate.chars().collect();
         let length = chars.len();
@@ -87,6 +104,12 @@ impl PlateGenerator {
         }
 
         Ok(plate_img)
+    }
+
+    /// 默认输出：高清车牌居中放在 1280×720 暗底场景上（更易被相机框选识别）
+    pub fn generate(&self, plate: &str, bg_color: &str) -> Result<RgbImage> {
+        let plate_img = self.generate_plate_only(plate, bg_color)?;
+        Ok(compose_centered_scene(&plate_img))
     }
 
     fn load_font_for_char(&self, plate: &str, ch: char, base_h: u32) -> Result<&GrayImage> {
@@ -125,6 +148,21 @@ impl PlateGenerator {
     }
 }
 
+/// 把车牌居中贴到暗色场景，宽度约占画面 72%
+pub fn compose_centered_scene(plate: &RgbImage) -> RgbImage {
+    let mut canvas = RgbImage::from_pixel(SCENE_W, SCENE_H, Rgb([18, 22, 28]));
+    let target_w = ((SCENE_W as f32) * 0.72).round() as u32;
+    let target_h =
+        ((target_w as f32) * (plate.height() as f32) / (plate.width() as f32).max(1.0)).round() as u32;
+    let target_h = target_h.max(1).min(SCENE_H - 40);
+    let target_w = target_w.max(1);
+    let resized = imageops::resize(plate, target_w, target_h, imageops::FilterType::Lanczos3);
+    let x = ((SCENE_W - target_w) / 2) as i64;
+    let y = ((SCENE_H - target_h) / 2) as i64;
+    imageops::overlay(&mut canvas, &resized, x, y);
+    canvas
+}
+
 fn split_id(plate: &str) -> usize {
     if plate.contains('警') {
         1
@@ -135,7 +173,6 @@ fn split_id(plate: &str) -> usize {
     }
 }
 
-/// 返回每个字符 [x1,y1,x2,y2]，已按 scale 放大
 fn location_data(length: usize, split_id: usize, base_height: i32, scale: u32) -> Vec<[i32; 4]> {
     let mut location_xy = vec![[0i32; 4]; length];
     let s = scale as i32;
@@ -178,11 +215,11 @@ fn paste_font(img: &mut RgbImage, font: &GrayImage, bbox: [i32; 4], bg_color: &s
         Rgb([0, 0, 0])
     };
 
-    // 软边缘抗锯齿：按灰度做 alpha 混合
+    // 硬阈值贴字（清晰锐利），边缘用轻度 alpha 仅抗锯齿
     for fy in 0..h {
         for fx in 0..w {
             let px = font_resized.get_pixel(fx, fy)[0];
-            if px >= 220 {
+            if px >= 200 {
                 continue;
             }
             let dx = x1 as u32 + fx;
@@ -190,15 +227,23 @@ fn paste_font(img: &mut RgbImage, font: &GrayImage, bbox: [i32; 4], bg_color: &s
             if dx >= img.width() || dy >= img.height() {
                 continue;
             }
-            let alpha = (220u16.saturating_sub(px as u16)) as f32 / 220.0;
-            let alpha = alpha.clamp(0.0, 1.0);
-            let bg = img.get_pixel(dx, dy);
-            let blended = Rgb([
-                ((color[0] as f32) * alpha + (bg[0] as f32) * (1.0 - alpha)) as u8,
-                ((color[1] as f32) * alpha + (bg[1] as f32) * (1.0 - alpha)) as u8,
-                ((color[2] as f32) * alpha + (bg[2] as f32) * (1.0 - alpha)) as u8,
-            ]);
-            img.put_pixel(dx, dy, blended);
+            if px < 160 {
+                img.put_pixel(dx, dy, color);
+            } else {
+                // 窄边缘抗锯齿，保持主体清晰
+                let alpha = (200u16.saturating_sub(px as u16)) as f32 / 40.0;
+                let alpha = alpha.clamp(0.0, 1.0);
+                let bg = img.get_pixel(dx, dy);
+                img.put_pixel(
+                    dx,
+                    dy,
+                    Rgb([
+                        ((color[0] as f32) * alpha + (bg[0] as f32) * (1.0 - alpha)) as u8,
+                        ((color[1] as f32) * alpha + (bg[1] as f32) * (1.0 - alpha)) as u8,
+                        ((color[2] as f32) * alpha + (bg[2] as f32) * (1.0 - alpha)) as u8,
+                    ]),
+                );
+            }
         }
     }
 }

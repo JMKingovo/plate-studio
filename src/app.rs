@@ -178,7 +178,7 @@ fn ghost_button(ui: &mut egui::Ui, text: &str) -> egui::Response {
 fn panel_frame() -> Frame {
     Frame::new()
         .fill(PANEL)
-        .stroke(Stroke::new(1.0, LINE))
+        .stroke(Stroke::new(1.0_f32, LINE))
         .inner_margin(Margin::symmetric(18, 16))
         .corner_radius(CornerRadius::same(0))
 }
@@ -243,6 +243,37 @@ impl PlateStudioApp {
         }
         self.plate_fullscreen = enabled;
         self.rt.block_on(self.state.set_fullscreen(enabled, "gui"));
+    }
+
+    fn current_plate(&self) -> Option<String> {
+        self.rt.block_on(async {
+            self.state
+                .inner
+                .read()
+                .await
+                .latest
+                .as_ref()
+                .map(|r| r.plate.clone())
+        })
+    }
+
+    fn copy_to_clipboard(&mut self, ctx: &egui::Context, text: &str) {
+        // egui 输出队列 + arboard 双写，确保能进系统剪贴板
+        ctx.copy_text(text.to_string());
+        match arboard::Clipboard::new().and_then(|mut c| c.set_text(text.to_string())) {
+            Ok(()) => self.status_msg = format!("已复制 {text}"),
+            Err(e) => {
+                tracing::warn!("系统剪贴板写入失败: {e}");
+                self.status_msg = format!("已复制 {text}（若粘贴失败请重试）");
+            }
+        }
+    }
+
+    fn copy_plate(&mut self, ctx: &egui::Context, plate: &str) {
+        if plate.is_empty() || plate == "等待生成" {
+            return;
+        }
+        self.copy_to_clipboard(ctx, plate);
     }
 
     fn update_preview(&mut self, ctx: &egui::Context, record: &PlateRecord) {
@@ -327,45 +358,83 @@ impl eframe::App for PlateStudioApp {
                             .unwrap_or_default()
                     });
 
-                    ui.vertical_centered(|ui| {
-                        ui.add_space(16.0);
+                    let full = ui.available_rect_before_wrap();
+                    // 顶栏按钮（不参与居中）
+                    ui.scope_builder(egui::UiBuilder::new().max_rect(full), |ui| {
                         ui.horizontal(|ui| {
+                            ui.add_space(16.0);
                             ui.spacing_mut().item_spacing.x = 16.0;
-                            if ui
+                            // 双击才退出，避免展示时误触
+                            let exit = ui
                                 .add(
                                     egui::Button::new(
-                                        RichText::new("退出").color(Color32::WHITE),
+                                        RichText::new("双击退出").color(Color32::WHITE),
                                     )
                                     .fill(Color32::from_rgb(40, 48, 60)),
                                 )
-                                .clicked()
-                            {
+                                .on_hover_text("需双击；也可按 Esc");
+                            if exit.double_clicked() {
                                 self.set_fullscreen(false);
                             }
-                            ui.label(
-                                RichText::new(&plate_text)
-                                    .size(36.0)
-                                    .strong()
-                                    .color(Color32::WHITE),
-                            );
-                            ui.label(RichText::new("Esc").size(13.0).color(Color32::from_gray(140)));
-                        });
-                        ui.add_space(28.0);
-
-                        let avail = ui.available_size();
-                        let max_w = (avail.x - 48.0).max(200.0);
-                        let max_h = (avail.y - 80.0).max(120.0);
-                        if let Some(tex) = &self.preview_texture {
-                            let aspect = tex.size()[0] as f32 / (tex.size()[1] as f32).max(1.0);
-                            let mut w = max_w;
-                            let mut h = w / aspect;
-                            if h > max_h {
-                                h = max_h;
-                                w = h * aspect;
+                            let plate_resp = ui
+                                .add(
+                                    egui::Label::new(
+                                        RichText::new(&plate_text)
+                                            .size(36.0)
+                                            .strong()
+                                            .color(Color32::WHITE),
+                                    )
+                                    .sense(egui::Sense::click()),
+                                )
+                                .on_hover_text("点击复制车牌号");
+                            if plate_resp.clicked() {
+                                self.copy_plate(ui.ctx(), &plate_text);
                             }
-                            ui.image((tex.id(), Vec2::new(w, h)));
-                        }
+                            if ui
+                                .add(
+                                    egui::Button::new(
+                                        RichText::new("复制").color(Color32::WHITE),
+                                    )
+                                    .fill(Color32::from_rgb(40, 48, 60)),
+                                )
+                                .on_hover_text("复制车牌号")
+                                .clicked()
+                            {
+                                self.copy_plate(ui.ctx(), &plate_text);
+                            }
+                            ui.label(
+                                RichText::new("Esc 退出")
+                                    .size(13.0)
+                                    .color(Color32::from_gray(140)),
+                            );
+                        });
                     });
+
+                    // 图片在剩余区域正中
+                    if let Some(tex) = &self.preview_texture {
+                        let top_bar = 56.0_f32;
+                        let area = egui::Rect::from_min_max(
+                            egui::pos2(full.min.x, full.min.y + top_bar),
+                            full.max,
+                        );
+                        let max_w = (area.width() - 48.0).max(200.0);
+                        let max_h = (area.height() - 32.0).max(120.0);
+                        let aspect = tex.size()[0] as f32 / (tex.size()[1] as f32).max(1.0);
+                        let mut w = max_w;
+                        let mut h = w / aspect;
+                        if h > max_h {
+                            h = max_h;
+                            w = h * aspect;
+                        }
+                        let img_rect =
+                            egui::Rect::from_center_size(area.center(), Vec2::new(w, h));
+                        ui.painter().image(
+                            tex.id(),
+                            img_rect,
+                            egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
+                            Color32::WHITE,
+                        );
+                    }
                 });
             return;
         }
@@ -376,7 +445,7 @@ impl eframe::App for PlateStudioApp {
             .frame(
                 Frame::new()
                     .fill(PANEL)
-                    .stroke(Stroke::new(1.0, LINE))
+                    .stroke(Stroke::new(1.0_f32, LINE))
                     .inner_margin(Margin::symmetric(20, 0)),
             )
             .show(ctx, |ui| {
@@ -398,10 +467,10 @@ impl eframe::App for PlateStudioApp {
                         .first()
                         .cloned()
                         .unwrap_or_else(|| format!("http://127.0.0.1:{port}"));
-                    let (dot, text) = if listening {
-                        (OK, format!("局域网可连  {display_url}"))
+                    let (dot, status) = if listening {
+                        (OK, "局域网可连")
                     } else {
-                        (BAD, "服务未启动".into())
+                        (BAD, "服务未启动")
                     };
                     ui.painter().circle_filled(
                         ui.cursor().left_center() + Vec2::new(5.0, 0.0),
@@ -409,18 +478,32 @@ impl eframe::App for PlateStudioApp {
                         dot,
                     );
                     ui.add_space(14.0);
-                    ui.label(RichText::new(text).size(13.5).color(MUTED));
-
-                    if ui
-                        .add(
-                            egui::Button::new(RichText::new("复制").size(13.0).color(ACCENT))
-                                .frame(false),
-                        )
-                        .on_hover_text(&display_url)
-                        .clicked()
-                    {
-                        ui.ctx().copy_text(display_url.clone());
-                        self.status_msg = format!("已复制 {display_url}");
+                    ui.label(RichText::new(status).size(13.5).color(MUTED));
+                    if listening {
+                        let url_resp = ui
+                            .add(
+                                egui::Label::new(
+                                    RichText::new(&display_url).size(13.5).color(ACCENT),
+                                )
+                                .sense(egui::Sense::click()),
+                            )
+                            .on_hover_text("点击复制地址");
+                        if url_resp.clicked() {
+                            self.copy_to_clipboard(ui.ctx(), &display_url);
+                        }
+                        if ui
+                            .add(
+                                egui::Button::new(
+                                    RichText::new("复制地址").size(13.0).color(Color32::WHITE),
+                                )
+                                .fill(ACCENT)
+                                .min_size(Vec2::new(72.0, 28.0)),
+                            )
+                            .on_hover_text(&display_url)
+                            .clicked()
+                        {
+                            self.copy_to_clipboard(ui.ctx(), &display_url);
+                        }
                     }
 
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -519,6 +602,14 @@ impl eframe::App for PlateStudioApp {
                         self.set_fullscreen(true);
                     }
                 });
+                ui.add_space(6.0);
+                ui.add_enabled_ui(self.current_plate().is_some(), |ui| {
+                    if ghost_button(ui, "复制车牌号").clicked() {
+                        if let Some(p) = self.current_plate() {
+                            self.copy_plate(ctx, &p);
+                        }
+                    }
+                });
 
                 ui.add_space(24.0);
                 ui.separator();
@@ -545,15 +636,20 @@ impl eframe::App for PlateStudioApp {
                     for r in &history {
                         let selected = self.preview_path.as_deref() == Some(r.image_path.as_str());
                         let label = format!("{}  ·  {}", r.plate, color_label(&r.color));
-                        let response = ui.selectable_label(
-                            selected,
-                            RichText::new(label)
-                                .size(13.5)
-                                .color(if selected { ACCENT } else { INK }),
-                        );
+                        let response = ui
+                            .selectable_label(
+                                selected,
+                                RichText::new(label)
+                                    .size(13.5)
+                                    .color(if selected { ACCENT } else { INK }),
+                            )
+                            .on_hover_text("单击预览 · 双击复制车牌号");
                         if response.clicked() {
                             self.status_msg = r.plate.clone();
                             self.update_preview(ctx, r);
+                        }
+                        if response.double_clicked() {
+                            self.copy_plate(ctx, &r.plate);
                         }
                     }
                 });
@@ -594,90 +690,108 @@ impl eframe::App for PlateStudioApp {
                         .unwrap_or_else(|| self.status_msg.clone())
                 });
 
-                ui.vertical_centered(|ui| {
-                    ui.add_space(8.0);
-                    ui.label(
-                        RichText::new(&plate_text)
-                            .size(48.0)
-                            .strong()
-                            .color(INK),
-                    );
-                    ui.add_space(4.0);
-                    ui.label(RichText::new(meta).size(14.0).color(MUTED));
-                    ui.add_space(22.0);
+                // 整块预览区水平 + 垂直居中（不响应单击，避免误进全屏）
+                let area = ui.available_rect_before_wrap();
+                let (resp_rect, _response) =
+                    ui.allocate_exact_size(area.size(), egui::Sense::hover());
+                let center = resp_rect.center();
 
-                    let max_w = ui.available_width();
-                    let max_h = ui.available_height() - 28.0;
+                // 标题在图片上方，整体相对区域居中
+                let title_h = 86.0_f32;
+                let hint_h = 28.0_f32;
+                let max_w = (resp_rect.width() - 48.0).max(200.0).min(960.0);
+                let max_h = (resp_rect.height() - title_h - hint_h - 24.0).max(120.0);
 
-                    if let Some(tex) = &self.preview_texture {
-                        let aspect = tex.size()[0] as f32 / (tex.size()[1] as f32).max(1.0);
-                        let mut w = max_w.min(920.0);
-                        let mut h = w / aspect;
-                        if h > max_h {
-                            h = max_h;
-                            w = h * aspect;
-                        }
-
-                        // 轻微底板衬托车牌
-                        let pad = 18.0;
-                        let (rect, response) = ui.allocate_exact_size(
-                            Vec2::new(w + pad * 2.0, h + pad * 2.0),
-                            egui::Sense::click(),
-                        );
-                        ui.painter().rect_filled(
-                            rect,
-                            CornerRadius::same(12),
-                            Color32::from_rgb(248, 249, 251),
-                        );
-                        ui.painter().rect_stroke(
-                            rect,
-                            CornerRadius::same(12),
-                            Stroke::new(1.0, LINE),
-                            egui::StrokeKind::Inside,
-                        );
-                        let img_rect = egui::Rect::from_center_size(rect.center(), Vec2::new(w, h));
-                        ui.painter().image(
-                            tex.id(),
-                            img_rect,
-                            egui::Rect::from_min_max(
-                                egui::pos2(0.0, 0.0),
-                                egui::pos2(1.0, 1.0),
-                            ),
-                            Color32::WHITE,
-                        );
-                        if response.clicked() || response.double_clicked() {
-                            self.set_fullscreen(true);
-                        }
-                        if response.hovered() {
-                            ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-                        }
-                        ui.add_space(10.0);
-                        ui.label(RichText::new("点击放大 · F11 全屏").size(12.5).color(MUTED));
-                    } else {
-                        let (rect, _) = ui.allocate_exact_size(
-                            Vec2::new(max_w.min(640.0), 180.0),
-                            egui::Sense::hover(),
-                        );
-                        ui.painter().rect_filled(
-                            rect,
-                            CornerRadius::same(12),
-                            Color32::from_rgb(248, 249, 251),
-                        );
-                        ui.painter().rect_stroke(
-                            rect,
-                            CornerRadius::same(12),
-                            Stroke::new(1.0, LINE),
-                            egui::StrokeKind::Inside,
-                        );
-                        ui.painter().text(
-                            rect.center(),
-                            egui::Align2::CENTER_CENTER,
-                            "点击左侧「生成车牌」开始",
-                            FontId::new(15.0, egui::FontFamily::Proportional),
-                            MUTED,
-                        );
+                let mut pending_copy: Option<String> = None;
+                if let Some(tex) = &self.preview_texture {
+                    let aspect = tex.size()[0] as f32 / (tex.size()[1] as f32).max(1.0);
+                    let mut w = max_w;
+                    let mut h = w / aspect;
+                    if h > max_h {
+                        h = max_h;
+                        w = h * aspect;
                     }
-                });
+                    let block_h = title_h + h + hint_h;
+                    let top = center.y - block_h * 0.5;
+
+                    // 车牌号可点击复制
+                    let title_rect = egui::Rect::from_center_size(
+                        egui::pos2(center.x, top + 28.0),
+                        Vec2::new((plate_text.chars().count() as f32 * 28.0).max(160.0), 52.0),
+                    );
+                    let title_id = ui.id().with("plate_title_copy");
+                    let title_resp = ui.interact(title_rect, title_id, egui::Sense::click());
+                    ui.painter().text(
+                        title_rect.center(),
+                        egui::Align2::CENTER_CENTER,
+                        &plate_text,
+                        FontId::new(48.0, egui::FontFamily::Proportional),
+                        if title_resp.hovered() { ACCENT } else { INK },
+                    );
+                    if title_resp.clicked() {
+                        pending_copy = Some(plate_text.clone());
+                    }
+                    if title_resp.hovered() {
+                        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+                        title_resp.on_hover_text("点击复制车牌号");
+                    }
+                    ui.painter().text(
+                        egui::pos2(center.x, top + 58.0),
+                        egui::Align2::CENTER_CENTER,
+                        &meta,
+                        FontId::new(14.0, egui::FontFamily::Proportional),
+                        MUTED,
+                    );
+
+                    let pad = 14.0;
+                    let frame = egui::Rect::from_center_size(
+                        egui::pos2(center.x, top + title_h + h * 0.5),
+                        Vec2::new(w + pad * 2.0, h + pad * 2.0),
+                    );
+                    ui.painter().rect_filled(
+                        frame,
+                        CornerRadius::same(12),
+                        Color32::from_rgb(248, 249, 251),
+                    );
+                    ui.painter().rect_stroke(
+                        frame,
+                        CornerRadius::same(12),
+                        Stroke::new(1.0_f32, LINE),
+                        egui::StrokeKind::Inside,
+                    );
+                    let img_rect = egui::Rect::from_center_size(frame.center(), Vec2::new(w, h));
+                    ui.painter().image(
+                        tex.id(),
+                        img_rect,
+                        egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
+                        Color32::WHITE,
+                    );
+                    ui.painter().text(
+                        egui::pos2(center.x, frame.max.y + 16.0),
+                        egui::Align2::CENTER_CENTER,
+                        "F11 或左侧「全屏查看」进入全屏",
+                        FontId::new(12.5, egui::FontFamily::Proportional),
+                        MUTED,
+                    );
+                } else {
+                    ui.painter().text(
+                        egui::pos2(center.x, center.y - 20.0),
+                        egui::Align2::CENTER_CENTER,
+                        &plate_text,
+                        FontId::new(48.0, egui::FontFamily::Proportional),
+                        INK,
+                    );
+                    ui.painter().text(
+                        center,
+                        egui::Align2::CENTER_CENTER,
+                        "点击左侧「生成车牌」开始",
+                        FontId::new(15.0, egui::FontFamily::Proportional),
+                        MUTED,
+                    );
+                }
+                if let Some(p) = pending_copy {
+                    self.copy_plate(ui.ctx(), &p);
+                }
             });
     }
 }

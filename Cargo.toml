@@ -10,9 +10,11 @@ anyhow = "1"
 axum = { version = "0.8", features = ["ws"] }
 base64 = "0.22"
 chrono = { version = "0.4", features = ["serde"] }
-# 关闭 accesskit，减少 WinRT / 新系统 API 依赖，提升旧版 Windows 兼容性
-eframe = { version = "0.31", default-features = false, features = ["default_fonts", "glow"] }
+# 关闭 accesskit；Linux 需显式开 x11/wayland（eframe 原生已带 egui-winit clipboard）
+eframe = { version = "0.31", default-features = false, features = ["default_fonts", "glow", "x11", "wayland"] }
 egui = { version = "0.31", default-features = false, features = ["default_fonts"] }
+# 直接写系统剪贴板，避免仅依赖 egui 内部回退剪贴板
+arboard = "3"
 futures-util = "0.3"
 image = { version = "0.25", default-features = false, features = ["jpeg", "png"] }
 rand = "0.9"

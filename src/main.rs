@@ -137,12 +137,18 @@ mod tests {
         let assets = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("assets");
         let gen = PlateGenerator::new(&assets).expect("assets");
         let img = gen.generate("粤C12345", "blue").expect("generate");
-        let scale = crate::generator::RENDER_SCALE;
-        assert_eq!(img.width(), 440 * scale);
-        assert_eq!(img.height(), 140 * scale);
+        // 默认输出为居中场景图
+        assert_eq!(img.width(), crate::generator::SCENE_W);
+        assert_eq!(img.height(), crate::generator::SCENE_H);
         let out = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("output/test_粤C12345.png");
         gen.save_image(&img, &out).expect("save");
         assert!(out.exists());
+        let plate = gen
+            .generate_plate_only("粤C12345", "blue")
+            .expect("plate only");
+        let scale = crate::generator::RENDER_SCALE;
+        assert_eq!(plate.width(), 440 * scale);
+        assert_eq!(plate.height(), 140 * scale);
     }
 
     #[test]
@@ -150,9 +156,8 @@ mod tests {
         let assets = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("assets");
         let gen = PlateGenerator::new(&assets).expect("assets");
         let img = gen.generate("粤AD12345", "green_car").expect("generate");
-        let scale = crate::generator::RENDER_SCALE;
-        assert_eq!(img.width(), 480 * scale);
-        assert_eq!(img.height(), 140 * scale);
+        assert_eq!(img.width(), crate::generator::SCENE_W);
+        assert_eq!(img.height(), crate::generator::SCENE_H);
     }
 
     #[test]
@@ -162,6 +167,34 @@ mod tests {
             let (plate, color) = plate_number::generate_random(&mut rng, None);
             let n = plate.chars().count();
             assert!((7..=8).contains(&n), "{plate} / {color}");
+        }
+    }
+
+    #[test]
+    fn random_green_plate_has_df() {
+        let mut rng = rand::rng();
+        for _ in 0..50 {
+            let (plate, _) = plate_number::generate_random(&mut rng, Some("green_car"));
+            assert!(
+                plate_number::is_valid_green_plate(&plate),
+                "invalid green: {plate}"
+            );
+            let third = plate.chars().nth(2).unwrap();
+            assert!(third == 'D' || third == 'F', "{plate}");
+        }
+    }
+
+    #[test]
+    fn random_blue_plate_second_is_letter() {
+        let mut rng = rand::rng();
+        for _ in 0..50 {
+            let (plate, _) = plate_number::generate_random(&mut rng, Some("blue"));
+            assert!(
+                plate_number::is_valid_ordinary_plate(&plate),
+                "invalid blue: {plate}"
+            );
+            let second = plate.chars().nth(1).unwrap();
+            assert!(plate_number::is_letter(second), "pos1 not letter: {plate}");
         }
     }
 }
