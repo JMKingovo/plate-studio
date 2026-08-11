@@ -1,8 +1,14 @@
-# Plate Studio（中文）
+---
+name: plate-studio
+description: >-
+  操作 Plate Studio（中国机动车号牌图像生成软件，默认局域网 API 端口 18765）。
+  在生成/更换号牌、控制全屏预览、查询最近与历史记录、或对接脚本与 Agent 时使用。
+  触发词：plate-studio、车牌生成、号牌 API、18765。
+---
+
+# Plate Studio
 
 桌面端中国机动车号牌图像生成软件（Rust + egui），对外提供本机/局域网 HTTP 与 WebSocket API，供脚本与 Agent 自动化调用。
-
-> 英文版见同目录 [SKILL.md](SKILL.md)。
 
 ## 范围界定
 
@@ -14,6 +20,7 @@
 
 - 仓库：https://github.com/JMKingovo/plate-studio
 - Windows 发行包：[Releases](https://github.com/JMKingovo/plate-studio/releases) → `plate-studio-windows.zip`
+- Skill 发行包：[Releases](https://github.com/JMKingovo/plate-studio/releases) → `plate-studio-skills.zip`
 
 ## 运行拓扑
 
@@ -153,22 +160,9 @@ cargo run --release -- --api-only   # 仅 API
 
 交叉编译与打包说明见仓库根目录 `README.md`。
 
-## Skill 安装
+## Skill 获取与安装
 
-**项目级：** 使用 Cursor 打开本仓库（路径 `.cursor/skills/plate-studio/`）。
+仓库路径：`skills/plate-studio/`  
+发行附件：`plate-studio-skills.zip`（解压后得到 `plate-studio/SKILL.md`）
 
-**用户级**（对所有工作区生效）：
-
-```bash
-git clone --depth 1 https://github.com/JMKingovo/plate-studio.git /tmp/plate-studio
-mkdir -p ~/.cursor/skills
-cp -a /tmp/plate-studio/.cursor/skills/plate-studio ~/.cursor/skills/
-```
-
-```powershell
-git clone --depth 1 https://github.com/JMKingovo/plate-studio.git $env:TEMP\plate-studio
-New-Item -ItemType Directory -Force -Path "$env:USERPROFILE\.cursor\skills" | Out-Null
-Copy-Item -Recurse -Force `
-  "$env:TEMP\plate-studio\.cursor\skills\plate-studio" `
-  "$env:USERPROFILE\.cursor\skills\"
-```
+将整个 `plate-studio` 目录复制到所用 Agent 的 skills 目录即可（不同产品路径不同，按各自文档配置）。

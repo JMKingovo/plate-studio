@@ -11,25 +11,16 @@
 - HTTP API：默认监听 `0.0.0.0:18765`（本机 + 局域网可访问）
 - WebSocket 推送：有新车牌时通知订阅方
 
-## Cursor Agent Skill
+## Agent Skill
 
-Operational guide for agents and integrators:
+中文操作规范：`skills/plate-studio/SKILL.md`。
 
-| Language | Path |
-|----------|------|
-| English | `.cursor/skills/plate-studio/SKILL.md` |
-| 中文 | `.cursor/skills/plate-studio/SKILL.zh-CN.md` |
+也可从 [Releases](https://github.com/JMKingovo/plate-studio/releases) 下载 `plate-studio-skills.zip`，解压后将 `plate-studio` 目录放入所用 Agent 的 skills 目录。
 
-- **Project install:** open this repository in Cursor.
-- **User install** (all workspaces):
-
-```bash
-git clone --depth 1 https://github.com/JMKingovo/plate-studio.git /tmp/plate-studio
-mkdir -p ~/.cursor/skills
-cp -a /tmp/plate-studio/.cursor/skills/plate-studio ~/.cursor/skills/
-```
-
-Windows build: [Releases](https://github.com/JMKingovo/plate-studio/releases) → `plate-studio-windows.zip`.
+| 附件 | 说明 |
+|------|------|
+| `plate-studio-windows.zip` | Windows 可执行包 |
+| `plate-studio-skills.zip` | Agent Skill（中文） |
 
 ## 运行
 
