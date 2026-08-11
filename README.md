@@ -11,6 +11,23 @@
 - HTTP API：默认监听 `0.0.0.0:18765`（本机 + 局域网可访问）
 - WebSocket 推送：有新车牌时通知订阅方
 
+## Cursor Skill（分享给别人）
+
+使用说明已做成 Cursor Agent Skill，路径：`.cursor/skills/plate-studio/`。
+
+| 方式 | 怎么做 |
+|------|--------|
+| 打开本仓库 | 用 Cursor 打开本项目，skill 自动可用 |
+| 装到个人目录 | 见下方命令（任意项目都能触发） |
+
+```bash
+git clone --depth 1 https://github.com/JMKingovo/plate-studio.git /tmp/plate-studio
+mkdir -p ~/.cursor/skills
+cp -a /tmp/plate-studio/.cursor/skills/plate-studio ~/.cursor/skills/
+```
+
+Windows 软件包请从 [Releases](https://github.com/JMKingovo/plate-studio/releases) 下载 `plate-studio-windows.zip`。
+
 ## 运行
 
 依赖：Rust 1.75+，素材目录 `assets/plate_model` 与 `assets/font_model`（已随项目提供）。
