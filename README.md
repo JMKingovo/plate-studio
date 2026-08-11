@@ -13,7 +13,12 @@
 
 ## Cursor Agent Skill
 
-Operational guide for agents and integrators: `.cursor/skills/plate-studio/SKILL.md`.
+Operational guide for agents and integrators:
+
+| Language | Path |
+|----------|------|
+| English | `.cursor/skills/plate-studio/SKILL.md` |
+| 中文 | `.cursor/skills/plate-studio/SKILL.zh-CN.md` |
 
 - **Project install:** open this repository in Cursor.
 - **User install** (all workspaces):

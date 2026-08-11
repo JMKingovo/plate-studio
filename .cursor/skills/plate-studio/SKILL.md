@@ -6,9 +6,12 @@ description: >-
   plates, controlling fullscreen preview, querying latest/history records,
   integrating scripts or agents with Plate Studio, or when the user mentions
   plate-studio, 车牌生成, 18765, or plate API endpoints.
+  Chinese documentation: SKILL.zh-CN.md.
 ---
 
 # Plate Studio
+
+> 中文版：[SKILL.zh-CN.md](SKILL.zh-CN.md)
 
 Desktop application (Rust + egui) that synthesizes single-layer Chinese license-plate images and exposes a LAN-accessible HTTP API for automation.
 
@@ -39,6 +42,8 @@ output/                          # created at runtime
 ```
 
 ## Agent operating procedure
+
+When the user communicates in Chinese, follow [SKILL.zh-CN.md](SKILL.zh-CN.md) and reply in Chinese.
 
 1. Resolve `BASE` from the user-provided host, or from the GUI “LAN URL”, else `http://127.0.0.1:18765`.
 2. Probe `GET /health` before mutating state.
